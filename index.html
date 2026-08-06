@@ -463,6 +463,39 @@
     .main { padding: 16px; }
     .selection-bar { margin-left: 0; }
   }
+  /* Modal de prévia */
+#previewModal {
+  display: none;
+}
+#previewModal table th {
+  background: var(--surface2);
+  color: var(--accent);
+  font-weight: 700;
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 2px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+#previewModal table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+#previewModal table tr:nth-child(even) td {
+  background: var(--surface);
+}
+#previewModal table .cat-row td {
+  background: #141720;
+  color: var(--accent);
+  font-weight: 700;
+}
+#previewModal table .subcat-row td {
+  background: #1c2030;
+  color: #6b738f;
+  font-weight: 600;
+}
 </style>
 </head>
 <body>
@@ -489,6 +522,13 @@
     <button class="export-btn" id="export-btn" onclick="exportXLS()" title="Exportar para Excel">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Exportar XLS
+    </button>
+    <button class="export-btn" onclick="previewXLS()" title="Pré-visualizar">
+  👁️ Pré-visualizar
+    </button>
+    <button class="export-btn" id="export-btn" onclick="exportXLS()" title="Exportar para Excel" style="background:var(--accent); color:#0d0f14;">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Exportar XLS
     </button>
   </div>
 </header>
@@ -963,7 +1003,7 @@ function buildMemorialSheet(wb, selectedItemsArr) {
   });
 
   // ── Linha de total geral (vazia, só identificação) ─────────────────────
-  setCell(ws, r, 0, 'TOTAL GERAL', {
+  setCell(ws, r, 1, 'TOTAL', {
     font: { bold: true, sz: 10, color: { rgb: 'E8FF47' }, name: 'Arial' },
     fill: sFill('FF0D1A06'),
     alignment: { horizontal: 'left', vertical: 'center' }
@@ -1030,6 +1070,106 @@ document.getElementById('search').addEventListener('input', e => {
 // ==================== INIT ====================
 renderMain();
 updateSelectedCount();
+// ==================== PRÉ-VISUALIZAÇÃO ====================
+function previewXLS() {
+  const selected = getSelectedItemsArray(); // mesma lógica da exportação
+  const modal = document.getElementById('previewModal');
+  const container = document.getElementById('previewTableContainer');
+  const table = document.getElementById('previewTable');
+
+  // Gera a tabela HTML
+  let html = `<thead><tr>
+    <th style="min-width:120px;">ITEM</th>
+    <th style="min-width:300px;">SERVIÇO</th>
+    <th style="min-width:40px;">L</th>
+    <th style="min-width:40px;">C</th>
+    <th style="min-width:40px;">H</th>
+    <th style="min-width:40px;">Q</th>
+    <th style="min-width:50px;">FM</th>
+    <th style="min-width:60px;">TOTAL</th>
+    <th style="min-width:60px;">UND</th>
+  </tr></thead><tbody>`;
+
+  let totalItems = 0;
+  // Mapeia itens selecionados para (categoria → subcategoria → itens)
+  const catMap = new Map();
+  for (const item of selected) {
+    for (const cat of DATA) {
+      for (const sc of cat.subcats) {
+        const found = sc.items.find(it => it.code === item.code);
+        if (found) {
+          if (!catMap.has(cat.id)) {
+            catMap.set(cat.id, { cat, subcats: new Map() });
+          }
+          const catEntry = catMap.get(cat.id);
+          if (!catEntry.subcats.has(sc.id)) {
+            catEntry.subcats.set(sc.id, { sc, items: [] });
+          }
+          catEntry.subcats.get(sc.id).items.push(found);
+          break;
+        }
+      }
+    }
+  }
+
+  DATA.forEach(cat => {
+    const catEntry = catMap.get(cat.id);
+    if (!catEntry) return;
+    // Linha da categoria
+    html += `<tr class="cat-row"><td>${escHtml(cat.id)}</td><td>${escHtml(cat.name.toUpperCase())}</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
+
+    catEntry.subcats.forEach((scEntry, scId) => {
+      if (scEntry.items.length === 0) return;
+      // Linha da subcategoria
+      html += `<tr class="subcat-row"><td>${escHtml(scId)}</td><td>${escHtml(scEntry.sc.name)}</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
+
+      scEntry.items.forEach(item => {
+        totalItems++;
+        html += `<tr>
+          <td>${escHtml(item.code)}</td>
+          <td>${escHtml(item.desc)}</td>
+          <td></td><td></td><td></td><td></td><td></td><td></td>
+          <td>${escHtml(item.unit || '')}</td>
+        </tr>`;
+      });
+    });
+  });
+
+  // Linha TOTAL
+  html += `<tr style="background:#0D1A06; font-weight:bold; color:var(--accent);">
+    <td></td><td>TOTAL</td>
+    <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+  </tr>`;
+
+  html += '</tbody>';
+  table.innerHTML = html;
+  document.getElementById('previewCount').textContent = totalItems;
+
+  modal.style.display = 'flex';
+}
+
+function closePreview() {
+  document.getElementById('previewModal').style.display = 'none';
+}
 </script>
+<!-- Modal de Pré-visualização -->
+<div id="previewModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:9999; justify-content:center; align-items:center; padding:20px; overflow-y:auto;">
+  <div style="background:var(--bg); border:1px solid var(--border); border-radius:12px; max-width:1200px; width:100%; max-height:90vh; overflow:auto; padding:24px; position:relative;">
+    <button onclick="closePreview()" style="position:sticky; top:0; float:right; background:var(--surface2); border:1px solid var(--border); color:var(--text); font-size:20px; padding:4px 12px; border-radius:6px; cursor:pointer;">✕</button>
+    <h2 style="font-family:Syne, sans-serif; font-size:20px; color:var(--accent); margin-bottom:16px;">📋 Prévia - Memorial de Cálculo</h2>
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:16px;">
+      <span id="previewCount">0</span> itens · 
+      <span style="color:var(--text-dim);">Colunas L, C, H, Q, FM e TOTAL são campos para preenchimento no Excel.</span>
+    </div>
+    <div id="previewTableContainer" style="overflow-x:auto; border:1px solid var(--border); border-radius:6px;">
+      <table id="previewTable" style="width:100%; border-collapse:collapse; font-size:11px; color:var(--text);">
+        <!-- preenchido via JavaScript -->
+      </table>
+    </div>
+    <div style="margin-top:16px; text-align:right;">
+      <button onclick="closePreview()" style="background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:8px 20px; border-radius:6px; cursor:pointer;">Fechar</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
